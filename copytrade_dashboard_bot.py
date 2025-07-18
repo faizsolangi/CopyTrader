@@ -43,23 +43,23 @@ def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
     seed_bytes = Bip39SeedGenerator(mnemonic).Generate()
     private_key = seed_bytes[:32]
     
-    # Debug information
-    print(f"Seed bytes type: {type(seed_bytes)}")
-    print(f"Seed bytes length: {len(seed_bytes)}")
-    print(f"Private key type: {type(private_key)}")
-    print(f"Private key length: {len(private_key)}")
+    # Debug with Streamlit
+    st.write(f"Seed bytes type: {type(seed_bytes)}")
+    st.write(f"Seed bytes length: {len(seed_bytes)}")
+    st.write(f"Private key type: {type(private_key)}")
+    st.write(f"Private key length: {len(private_key)}")
     
     try:
         return Keypair.from_secret_key(private_key)
     except Exception as e:
-        print(f"Error: {e}")
-        # Try converting to bytes if it's not already
-        if hasattr(private_key, 'ToBytes'):
-            private_key_bytes = private_key.ToBytes()
-            print(f"Converted to bytes: {type(private_key_bytes)}, length: {len(private_key_bytes)}")
-            return Keypair.from_secret_key(private_key_bytes)
+        st.error(f"Error: {e}")
+        # Try different conversions
+        if hasattr(seed_bytes, 'ToBytes'):
+            seed_bytes_converted = seed_bytes.ToBytes()
+            private_key_converted = seed_bytes_converted[:32]
+            st.write(f"After conversion - type: {type(private_key_converted)}, length: {len(private_key_converted)}")
+            return Keypair.from_secret_key(private_key_converted)
         raise
-
 wallet = get_keypair_from_mnemonic(MNEMONIC)
 client = Client(RPC_URL)
 
