@@ -1,62 +1,79 @@
 import os
+import time
 import json
 import streamlit as st
-import asyncio
-import nest_asyncio
-from solana.publickey import PublicKey
-from solana.rpc.async_api import AsyncClient
+from solana.rpc.api import Client
 from solana.keypair import Keypair
-from bip_utils import Bip39SeedGenerator, Bip39MnemonicValidator, Bip44, Bip44Coins
+from solana.publickey import PublicKey
+from solana.transaction import Transaction
+from solana.rpc.types import TxOpts
+from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins
+from dotenv import load_dotenv
 
-# Patch asyncio for Streamlit
-nest_asyncio.apply()
+# Load .env variables
+load_dotenv()
 
-# ========== Wallet Setup ==========
-MNEMONIC = os.getenv("MY_MNEMONIC") or "your 24-word mnemonic goes here"
+# === Wallet Setup ===
+MNEMONIC = os.getenv("PRIVATE_KEY")  # 24-word seed phrase
+TARGET_WALLET = os.getenv("TARGET_WALLET") or "TARGET_WALLET_ADDRESS"
 
-if not Bip39MnemonicValidator(MNEMONIC).IsValid():
-    st.error("Invalid mnemonic phrase")
-    st.stop()
+# Derive keypair from 24-word mnemonic
+def get_keypair_from_mnemonic(mnemonic):
+    seed_bytes = Bip39SeedGenerator(mnemonic).Generate()
+    bip44 = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
+    priv_key = bip44.PrivateKey().Raw().ToBytes()
+    return Keypair.from_secret_key(priv_key)
 
-seed = Bip39SeedGenerator(MNEMONIC).Generate()
-bip44 = Bip44.FromSeed(seed, Bip44Coins.SOLANA)
-priv_key = bip44.Purpose().Coin().Account(0).Change(0).AddressIndex(0).PrivateKey().Raw().ToBytes()
-wallet = Keypair.from_secret_key(priv_key)
-WALLET_ADDRESS = str(wallet.public_key)
+wallet = get_keypair_from_mnemonic(MNEMONIC)
+wallet_pubkey = wallet.public_key
 
-# ========== Streamlit UI ==========
-st.set_page_config(page_title="Solana Copy Trade Bot", layout="centered")
-st.title("📈 Solana Memecoin Copy Trading Bot")
-st.markdown("Track and auto-copy SPL token swaps from top wallets using Jupiter API.")
+# === RPC and Dashboard ===
+client = Client("https://api.mainnet-beta.solana.com")
 
-st.info(f"Your Wallet: `{WALLET_ADDRESS}`")
+st.title("📈 Solana Copy Trading Bot Dashboard")
+st.write("Wallet Public Key:", str(wallet_pubkey))
+st.write("Target Wallet:", TARGET_WALLET)
 
-# ========== Async Functions ==========
-async def fetch_recent_transaction():
-    client = AsyncClient("https://api.mainnet-beta.solana.com")
-    confirmed_txns = await client.get_signatures_for_address(PublicKey(WALLET_ADDRESS), limit=1)
-    await client.close()
-    return confirmed_txns
+# === Copy-Trade Logic ===
+executed_trades = set()
 
-async def copy_trade_logic():
-    st.session_state.status = "Watching wallet and waiting for new trades..."
+@st.cache_data(ttl=10)
+def fetch_transactions():
+    result = client.get_confirmed_signature_for_address2(PublicKey(TARGET_WALLET), limit=5)
+    if not result["result"]:
+        return []
+    return result["result"]
 
-    # Simulate single swap loop
-    while True:
-        tx = await fetch_recent_transaction()
-        if tx["result"]:
-            sig = tx["result"][0]["signature"]
-            st.success(f"🔁 Copying trade from transaction: `{sig}`")
-            # Replace below with actual Jupiter swap replication logic
-            break
-        await asyncio.sleep(10)
+def execute_trade(tx_signature):
+    # Placeholder for actual swap logic, which could use Jupiter API
+    # Here we simulate with a print
+    st.success(f"Executed mirrored trade for {tx_signature}")
 
-# ========== Run Bot ==========
-if "status" not in st.session_state:
-    st.session_state.status = "Idle"
+# Monitor and copy trades
+transactions = fetch_transactions()
+for tx in transactions:
+    sig = tx["signature"]
+    if sig not in executed_trades:
+        execute_trade(sig)
+        executed_trades.add(sig)
 
-st.write("### 🟢 Bot Status:")
-st.code(st.session_state.status)
+st.write("### Recent Trades:")
+st.json(transactions)
 
-if st.button("🚀 Start Copy Trading"):
-    asyncio.run(copy_trade_logic())
+# === Placeholder for gain logic ===
+def sell_on_gain():
+    # This is where you'd track token prices and implement 100% gain logic
+    pass
+
+# Run this every 10 seconds
+st_autorefresh = st.empty()
+while True:
+    st_autorefresh.empty()
+    time.sleep(5)
+    transactions = fetch_transactions()
+    for tx in transactions:
+        sig = tx["signature"]
+        if sig not in executed_trades:
+            execute_trade(sig)
+            executed_trades.add(sig)
+    sell_on_gain()
