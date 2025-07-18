@@ -3,8 +3,7 @@ import time
 import json
 import streamlit as st
 from solana.rpc.api import Client
-#from solana.keypair import Keypair
-from solana.account import Account as Keypair
+from solana.keypair import Keypair
 from solana.publickey import PublicKey
 from solana.transaction import Transaction
 from solana.rpc.types import TxOpts
