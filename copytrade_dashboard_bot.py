@@ -8,16 +8,17 @@ from solders.keypair import Keypair
 from solders.pubkey import Pubkey as PublicKey
 from solders.transaction import Transaction
 from solana.rpc.types import TxOpts
-from bip_utils import Bip39SeedGenerator
+from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins, Bip44Changes
 from dotenv import load_dotenv
 from typing import Dict, List, Optional
 import base64
+import base58
 
 # Load environment variables
 load_dotenv()
 
 # Configuration
-MNEMONIC = os.getenv("PRIVATE_KEY")  # Your mnemonic phrase
+PRIVATE_KEY = os.getenv("PRIVATE_KEY")  # Can be mnemonic phrase or base58 private key
 TARGET_WALLET = os.getenv("TARGET_WALLET")
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 JUPITER_API_URL = "https://quote-api.jup.ag/v6"
@@ -41,34 +42,129 @@ if 'executed_trades' not in st.session_state:
 if 'trading_active' not in st.session_state:
     st.session_state.trading_active = False
 
-# Wallet setup - FIXED
-def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
-    """Generate Solana keypair from mnemonic using standard approach"""
+# Wallet setup - IMPROVED
+def get_keypair_from_private_key(private_key: str) -> Keypair:
+    """Generate Solana keypair from either mnemonic phrase or base58 private key"""
     try:
-        # Remove any quotes from mnemonic
-        clean_mnemonic = mnemonic.strip().strip('"\'')
+        # Remove any quotes and whitespace
+        clean_private_key = private_key.strip().strip('"\'')
         
-        # Generate seed from mnemonic
-        seed_bytes = Bip39SeedGenerator(clean_mnemonic).Generate()
+        # Check if it's a mnemonic phrase (12 or 24 words)
+        words = clean_private_key.split()
+        if len(words) in [12, 24]:
+            st.info("Detected mnemonic phrase, generating keypair...")
+            return get_keypair_from_mnemonic(clean_private_key)
         
-        # Use first 32 bytes as private key (standard Solana approach)
-        private_key = seed_bytes[:32]
+        # Check if it's a base58 private key
+        elif len(clean_private_key) == 88 or len(clean_private_key) == 87:
+            st.info("Detected base58 private key, generating keypair...")
+            return get_keypair_from_base58(clean_private_key)
         
-        # Convert to bytes array format that Keypair expects
-        private_key_array = list(private_key)
+        # Check if it's a JSON array format [1,2,3,...]
+        elif clean_private_key.startswith('[') and clean_private_key.endswith(']'):
+            st.info("Detected JSON array private key, generating keypair...")
+            return get_keypair_from_json_array(clean_private_key)
         
-        return Keypair.from_seed(bytes(private_key_array))
+        else:
+            # Try to parse as base58 anyway
+            st.info("Attempting to parse as base58 private key...")
+            return get_keypair_from_base58(clean_private_key)
+            
     except Exception as e:
-        st.error(f"Error creating wallet from mnemonic: {e}")
+        st.error(f"Error creating wallet from private key: {e}")
+        st.error("Please check your PRIVATE_KEY format. Supported formats:")
+        st.error("1. Mnemonic phrase (12 or 24 words)")
+        st.error("2. Base58 private key (87-88 characters)")
+        st.error("3. JSON array format [1,2,3,...]")
         st.stop()
+
+def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
+    """Generate Solana keypair from mnemonic using BIP44 derivation"""
+    try:
+        # Generate seed from mnemonic
+        seed_bytes = Bip39SeedGenerator(mnemonic).Generate()
+        
+        # Use BIP44 derivation path for Solana: m/44'/501'/0'/0'
+        bip44_mst_ctx = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
+        bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(0)
+        bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+        bip44_addr_ctx = bip44_chg_ctx.AddressIndex(0)
+        
+        # Get the private key bytes
+        private_key_bytes = bip44_addr_ctx.PrivateKey().Raw().ToBytes()
+        
+        return Keypair.from_bytes(private_key_bytes)
+        
+    except Exception as e:
+        st.error(f"Error creating keypair from mnemonic: {e}")
+        raise
+
+def get_keypair_from_base58(base58_key: str) -> Keypair:
+    """Generate Solana keypair from base58 private key"""
+    try:
+        # Decode base58 private key
+        private_key_bytes = base58.b58decode(base58_key)
+        
+        # Solana private keys are 64 bytes (32 bytes secret + 32 bytes public)
+        if len(private_key_bytes) == 64:
+            return Keypair.from_bytes(private_key_bytes)
+        elif len(private_key_bytes) == 32:
+            # If only 32 bytes, assume it's just the secret key
+            return Keypair.from_seed(private_key_bytes)
+        else:
+            raise ValueError(f"Invalid private key length: {len(private_key_bytes)} bytes")
+            
+    except Exception as e:
+        st.error(f"Error creating keypair from base58: {e}")
+        raise
+
+def get_keypair_from_json_array(json_array: str) -> Keypair:
+    """Generate Solana keypair from JSON array format"""
+    try:
+        # Parse JSON array
+        key_array = json.loads(json_array)
+        
+        # Convert to bytes
+        private_key_bytes = bytes(key_array)
+        
+        # Check length and create keypair
+        if len(private_key_bytes) == 64:
+            return Keypair.from_bytes(private_key_bytes)
+        elif len(private_key_bytes) == 32:
+            return Keypair.from_seed(private_key_bytes)
+        else:
+            raise ValueError(f"Invalid private key length: {len(private_key_bytes)} bytes")
+            
+    except Exception as e:
+        st.error(f"Error creating keypair from JSON array: {e}")
+        raise
 
 # Initialize wallet and client
 try:
-    wallet = get_keypair_from_mnemonic(MNEMONIC)
+    if not PRIVATE_KEY:
+        st.error("PRIVATE_KEY environment variable not set!")
+        st.error("Please set your PRIVATE_KEY in the .env file")
+        st.stop()
+    
+    wallet = get_keypair_from_private_key(PRIVATE_KEY)
     client = Client(RPC_URL)
+    
+    # Verify wallet connection
+    wallet_address = str(wallet.pubkey())
     st.success("Wallet initialized successfully!")
+    st.info(f"Your wallet address: {wallet_address}")
+    
+    # Test connection by getting balance
+    balance_result = client.get_balance(wallet.pubkey())
+    if balance_result.value is not None:
+        sol_balance = balance_result.value / 1_000_000_000
+        st.info(f"Current balance: {sol_balance:.4f} SOL")
+    else:
+        st.warning("Could not fetch balance - RPC connection may be slow")
+        
 except Exception as e:
-    st.error(f"Failed to initialize wallet: {e}")
+    st.error("Failed to initialize wallet: {}".format(e))
+    st.error("Please check your PRIVATE_KEY and try again")
     st.stop()
 
 # Jupiter API functions
@@ -227,7 +323,7 @@ def check_and_sell_on_profit():
                 profit_percentage = ((current_price - position['entry_price']) / position['entry_price']) * 100
                 
                 if profit_percentage >= PROFIT_TARGET:  # Profit target reached
-                    st.success(f" Profit target reached for {token_address[:8]}...! (+{profit_percentage:.1f}%)")
+                    st.success("Profit target reached for {}...! (+{:.1f}%)".format(token_address[:8], profit_percentage))
                     
                     # Calculate 50% of position to sell
                     sell_amount = position['amount'] // 2
@@ -250,17 +346,17 @@ def check_and_sell_on_profit():
                                 'amount': position['amount'] - sell_amount
                             }
                             
-                            st.success(f"Sold 50% of {token_address[:8]}... for {sol_received:.4f} SOL!")
+                            st.success("Sold 50% of {}... for {:.4f} SOL!".format(token_address[:8], sol_received))
                         else:
-                            st.error(f"Failed to execute profit-taking sell for {token_address[:8]}...")
+                            st.error("Failed to execute profit-taking sell for {}...".format(token_address[:8]))
         except Exception as e:
-            st.error(f"Error checking profit for {token_address[:8]}...: {e}")
+            st.error("Error checking profit for {}...: {}".format(token_address[:8], e))
     
     # Update positions
     for token_address, updated_position in positions_to_update.items():
         if updated_position['amount'] <= 1000:  # Remove very small positions
             del st.session_state.positions[token_address]
-            st.info(f"Position closed for {token_address[:8]}... (remaining amount too small)")
+            st.info("Position closed for {}... (remaining amount too small)".format(token_address[:8]))
         else:
             st.session_state.positions[token_address] = updated_position
 
@@ -279,7 +375,7 @@ def check_and_execute_stop_loss():
                 profit_percentage = ((current_price - position['entry_price']) / position['entry_price']) * 100
                 
                 if profit_percentage <= STOP_LOSS_PERCENTAGE:  # Stop-loss triggered
-                    st.error(f"STOP-LOSS TRIGGERED for {token_address[:8]}...! ({profit_percentage:.1f}%)")
+                    st.error("STOP-LOSS TRIGGERED for {}...! ({:.1f}%)".format(token_address[:8], profit_percentage))
                     
                     # Sell entire position
                     sell_amount = position['amount']
@@ -297,12 +393,12 @@ def check_and_execute_stop_loss():
                         sol_spent = position.get('sol_spent', BUY_AMOUNT_SOL)
                         loss_amount = sol_spent - sol_received
                         
-                        st.error(f"STOP-LOSS EXECUTED: Received {sol_received:.4f} SOL (Loss: {loss_amount:.4f} SOL)")
+                        st.error("STOP-LOSS EXECUTED: Received {:.4f} SOL (Loss: {:.4f} SOL)".format(sol_received, loss_amount))
                         positions_to_remove.append(token_address)
                     else:
-                        st.error(f"Failed to execute stop-loss for {token_address[:8]}...")
+                        st.error("Failed to execute stop-loss for {}...".format(token_address[:8]))
         except Exception as e:
-            st.error(f"Error checking stop-loss for {token_address[:8]}...: {e}")
+            st.error("Error checking stop-loss for {}...: {}".format(token_address[:8], e))
     
     # Remove stopped-out positions
     for token_address in positions_to_remove:
@@ -312,40 +408,40 @@ def check_and_execute_stop_loss():
 # Streamlit UI
 st.set_page_config(page_title="Solana Copy Trading Bot", page_icon="🤖", layout="wide")
 
-st.title("🤖 Solana Copy Trading Bot")
-st.warning( "**LIVE TRADING MODE** - This bot executes real trades with real money!")
+st.title("Solana Copy Trading Bot")
+st.warning("**LIVE TRADING MODE** - This bot executes real trades with real money!")
 
 # Display configuration in sidebar
 with st.sidebar:
-    st.header("⚙️ Configuration")
-    st.info(f"**Buy Amount:** {BUY_AMOUNT_SOL} SOL")
-    st.success(f"**Profit Target:** +{PROFIT_TARGET}%")
-    st.error(f"**Stop-Loss:** {STOP_LOSS_PERCENTAGE}%")
+    st.header("Configuration")
+    st.info("**Buy Amount:** {} SOL".format(BUY_AMOUNT_SOL))
+    st.success("**Profit Target:** +{}%".format(PROFIT_TARGET))
+    st.error("**Stop-Loss:** {}%".format(STOP_LOSS_PERCENTAGE))
     
-    st.header("📡 Connection")
-    st.code(f"Wallet: {str(wallet.pubkey())[:8]}...", language=None)
+    st.header("Connection")
+    st.code("Your Wallet: {}...".format(str(wallet.pubkey())[:8]), language=None)
     if TARGET_WALLET:
-        st.code(f"Target: {TARGET_WALLET[:8]}...", language=None)
+        st.code("Target Wallet: {}...".format(TARGET_WALLET[:8]), language=None)
     else:
-        st.error(" TARGET_WALLET not set!")
+        st.error("TARGET_WALLET not set!")
 
 # Main dashboard
 col1, col2, col3 = st.columns([2, 2, 1])
 
 with col1:
-    st.subheader(" Account Balance")
+    st.subheader("Account Balance")
     try:
         balance_result = client.get_balance(wallet.pubkey())
         if balance_result.value is not None:
             sol_balance = balance_result.value / 1_000_000_000
-            st.metric("SOL Balance", f"{sol_balance:.4f} SOL")
+            st.metric("SOL Balance", "{:.4f} SOL".format(sol_balance))
             
             if sol_balance < BUY_AMOUNT_SOL:
-                st.error(f"Insufficient balance! Need at least {BUY_AMOUNT_SOL} SOL")
+                st.error("Insufficient balance! Need at least {} SOL".format(BUY_AMOUNT_SOL))
         else:
-            st.error(" Could not fetch balance")
+            st.error("Could not fetch balance")
     except Exception as e:
-        st.error(f"Error checking balance: {e}")
+        st.error("Error checking balance: {}".format(e))
 
 with col2:
     st.subheader("Trading Status")
@@ -376,27 +472,27 @@ with col3:
 st.subheader("Current Positions")
 if st.session_state.positions:
     for token_address, position in st.session_state.positions.items():
-        with st.expander(f" {token_address[:8]}... - {position.get('sol_spent', BUY_AMOUNT_SOL)} SOL invested"):
+        with st.expander("{} - {} SOL invested".format(token_address[:8], position.get('sol_spent', BUY_AMOUNT_SOL))):
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.write(f"**Amount:** {position['amount']:,}")
-                st.write(f"**Entry Price:** ${position.get('entry_price', 0):.8f}")
+                st.write("**Amount:** {:,}".format(position['amount']))
+                st.write("**Entry Price:** ${:.8f}".format(position.get('entry_price', 0)))
             
             with col2:
                 current_price = get_token_price(token_address)
                 if current_price and position.get('entry_price'):
                     profit_pct = ((current_price - position['entry_price']) / position['entry_price']) * 100
-                    st.write(f"**Current Price:** ${current_price:.8f}")
+                    st.write("**Current Price:** ${:.8f}".format(current_price))
                     
                     if profit_pct >= PROFIT_TARGET:
-                        st.success(f"**P&L:** +{profit_pct:.1f}% 🎯")
+                        st.success("**P&L:** +{:.1f}%".format(profit_pct))
                     elif profit_pct > 0:
-                        st.info(f"**P&L:** +{profit_pct:.1f}%")
+                        st.info("**P&L:** +{:.1f}%".format(profit_pct))
                     elif profit_pct <= STOP_LOSS_PERCENTAGE:
-                        st.error(f"**P&L:** {profit_pct:.1f}% 🚨")
+                        st.error("**P&L:** {:.1f}%".format(profit_pct))
                     else:
-                        st.warning(f"**P&L:** {profit_pct:.1f}%")
+                        st.warning("**P&L:** {:.1f}%".format(profit_pct))
                 else:
                     st.write("**Current Price:** Loading...")
                     st.write("**P&L:** Calculating...")
@@ -406,13 +502,13 @@ if st.session_state.positions:
                 duration = time.time() - entry_time
                 hours = int(duration // 3600)
                 minutes = int((duration % 3600) // 60)
-                st.write(f"**Duration:** {hours}h {minutes}m")
+                st.write("**Duration:** {}h {}m".format(hours, minutes))
                 
-                if st.button(f" Close Position", key=f"close_{token_address}"):
+                if st.button("Close Position", key="close_{}".format(token_address)):
                     # Manual close position logic would go here
                     st.info("Manual close feature would be implemented here")
 else:
-    st.info(" No open positions")
+    st.info("No open positions")
 
 # Trading loop
 if st.session_state.trading_active and TARGET_WALLET:
@@ -435,17 +531,17 @@ if st.session_state.trading_active and TARGET_WALLET:
                     if hasattr(tx, 'signature'):
                         sig = tx.signature
                         if sig and sig not in st.session_state.executed_trades:
-                            st.info(f" New transaction detected: {sig[:8]}...")
+                            st.info("New transaction detected: {}...".format(sig[:8]))
                             
                             if copy_trade_by_signature(sig):
                                 st.session_state.executed_trades.add(sig)
                                 new_trades += 1
-                                st.success(f"Trade copied successfully!")
+                                st.success("Trade copied successfully!")
                             else:
-                                st.warning(f"Could not copy trade (demo mode)")
+                                st.warning("Could not copy trade (demo mode)")
                 
                 if new_trades == 0:
-                    st.success(" No new trades to copy")
+                    st.success("No new trades to copy")
             else:
                 st.warning("No transactions found for target wallet")
             
@@ -456,7 +552,7 @@ if st.session_state.trading_active and TARGET_WALLET:
                 check_and_execute_stop_loss()
             
         except Exception as e:
-            st.error(f"Error in trading loop: {e}")
+            st.error("Error in trading loop: {}".format(e))
     
     # Auto-refresh every 10 seconds when active
     if st.session_state.trading_active:
@@ -484,7 +580,7 @@ with col2:
 with col3:
     if st.session_state.positions:
         total_invested = sum(pos.get('sol_spent', BUY_AMOUNT_SOL) for pos in st.session_state.positions.values())
-        st.metric("Total Invested", f"{total_invested:.3f} SOL")
+        st.metric("Total Invested", "{:.3f} SOL".format(total_invested))
     else:
         st.metric("Total Invested", "0 SOL")
 
@@ -500,12 +596,33 @@ with col4:
             total_pnl += pnl_sol
     
     if total_pnl > 0:
-        st.metric("Unrealized P&L", f"+{total_pnl:.4f} SOL", delta=f"+{total_pnl:.4f}")
+        st.metric("Unrealized P&L", "+{:.4f} SOL".format(total_pnl), delta="+{:.4f}".format(total_pnl))
     elif total_pnl < 0:
-        st.metric("Unrealized P&L", f"{total_pnl:.4f} SOL", delta=f"{total_pnl:.4f}")
+        st.metric("Unrealized P&L", "{:.4f} SOL".format(total_pnl), delta="{:.4f}".format(total_pnl))
     else:
         st.metric("Unrealized P&L", "0 SOL")
 
 # Footer
 st.markdown("---")
-st.caption(" **Disclaimer:** This is experimental software. Use at your own risk. Always test with small amounts first.")
+st.caption("**Disclaimer:** This is experimental software. Use at your own risk. Always test with small amounts first.")
+
+# Debug information
+with st.expander("Debug Information"):
+    st.write("**Environment Variables:**")
+    st.write("- PRIVATE_KEY: {}".format('Set' if PRIVATE_KEY else 'Not set'))
+    st.write("- TARGET_WALLET: {}".format('Set' if TARGET_WALLET else 'Not set'))
+    st.write("- RPC_URL: {}".format(RPC_URL))
+    
+    st.write("**Wallet Info:**")
+    st.write("- Public Key: {}".format(str(wallet.pubkey())))
+    st.write("- Network: {}".format('Mainnet' if 'mainnet' in RPC_URL else 'Devnet/Testnet'))
+    
+    if st.button("Test Connection"):
+        try:
+            balance_result = client.get_balance(wallet.pubkey())
+            if balance_result.value is not None:
+                st.success("Connection successful! Balance: {:.4f} SOL".format(balance_result.value / 1_000_000_000))
+            else:
+                st.error("Connection failed - could not fetch balance")
+        except Exception as e:
+            st.error("Connection error: {}".format(e))
