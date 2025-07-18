@@ -174,7 +174,7 @@ def copy_trade(tx_signature: str) -> bool:
                     'sol_spent': BUY_AMOUNT_SOL
                 }
                 
-                st.success(f"✅ Bought {tokens_received:,} tokens for 0.03 SOL")
+                st.success(f"Bought {tokens_received:,} tokens for 0.03 SOL")
                 return True
             else:
                 st.error("Failed to execute swap")
@@ -199,7 +199,7 @@ def check_and_sell_on_profit():
                 # Sell 50% of position
                 sell_amount = position['amount'] // 2
                 
-                st.info(f"🎯 Taking 50% profit on {token_address[:8]}... at {profit_percentage:.1f}% gain")
+                st.info(f"Taking 50% profit on {token_address[:8]}... at {profit_percentage:.1f}% gain")
                 
                 # Get quote to sell 50% back to SOL
                 quote = get_jupiter_quote(
@@ -215,7 +215,7 @@ def check_and_sell_on_profit():
                     # Update position
                     st.session_state.positions[token_address]['amount'] -= sell_amount
                     
-                    st.success(f"💰 Sold 50% for {sol_received:.4f} SOL at {profit_percentage:.1f}% profit!")
+                    st.success(f"Sold 50% for {sol_received:.4f} SOL at {profit_percentage:.1f}% profit!")
                     
                     # Remove position if amount is too small
                     if st.session_state.positions[token_address]['amount'] <= 100:
@@ -239,7 +239,7 @@ def check_and_execute_stop_loss():
             profit_percentage = ((current_price - position['entry_price']) / position['entry_price']) * 100
             
             if profit_percentage <= STOP_LOSS_PERCENTAGE:  # -50% loss - sell everything
-                st.warning(f"🛑 STOP-LOSS TRIGGERED for {token_address[:8]}... at {profit_percentage:.1f}% loss!")
+                st.warning(f"STOP-LOSS TRIGGERED for {token_address[:8]}... at {profit_percentage:.1f}% loss!")
                 
                 # Sell entire position
                 sell_amount = position['amount']
@@ -257,12 +257,12 @@ def check_and_execute_stop_loss():
                     sol_spent = position.get('sol_spent', BUY_AMOUNT_SOL)
                     loss_amount = sol_spent - sol_received
                     
-                    st.error(f"💸 STOP-LOSS: Sold all for {sol_received:.4f} SOL (Loss: {loss_amount:.4f} SOL)")
+                    st.error(f"STOP-LOSS: Sold all for {sol_received:.4f} SOL (Loss: {loss_amount:.4f} SOL)")
                     
                     # Mark position for removal
                     positions_to_remove.append(token_address)
                 else:
-                    st.error(f"❌ Failed to execute stop-loss for {token_address[:8]}...")
+                    st.error(f"Failed to execute stop-loss for {token_address[:8]}...")
     
     # Remove stopped-out positions
     for token_address in positions_to_remove:
@@ -270,12 +270,12 @@ def check_and_execute_stop_loss():
 
 # Streamlit UI
 st.title("Solana Copy Trading Bot - LIVE TRADING")
-st.warning(⚠️ WARNING: This bot will execute real trades with real money!")
+st.warning(WARNING: This bot will execute real trades with real money!")
 
 # Display configuration
-st.info(f"💰 **Buy Amount:** {BUY_AMOUNT_SOL} SOL per trade")
-st.info(f"🎯 **Profit Target:** {PROFIT_TARGET}% (sell 50% of position)")
-st.error(f"🛑 **Stop-Loss:** {STOP_LOSS_PERCENTAGE}% (sell entire position)")
+st.info(f"**Buy Amount:** {BUY_AMOUNT_SOL} SOL per trade")
+st.info(f" **Profit Target:** {PROFIT_TARGET}% (sell 50% of position)")
+st.error(f" **Stop-Loss:** {STOP_LOSS_PERCENTAGE}% (sell entire position)")
 
 # Display wallet info
 st.write(f"**Wallet:** {wallet.public_key}")
@@ -288,7 +288,7 @@ try:
     st.write(f"**SOL Balance:** {sol_balance:.4f} SOL")
     
     if sol_balance < BUY_AMOUNT_SOL:
-        st.error(f"❌ Insufficient SOL balance! Need at least {BUY_AMOUNT_SOL} SOL to trade.")
+        st.error(f"Insufficient SOL balance! Need at least {BUY_AMOUNT_SOL} SOL to trade.")
 except Exception as e:
     st.error(f"Error checking balance: {e}")
 
@@ -316,13 +316,13 @@ with col2:
                 
                 # Color code based on profit
                 if profit_pct >= PROFIT_TARGET:
-                    st.success(f"🚀 **{token[:8]}...**: +{profit_pct:.1f}% (Ready to sell 50%!)")
+                    st.success(f"**{token[:8]}...**: +{profit_pct:.1f}% (Ready to sell 50%!)")
                 elif profit_pct > 0:
-                    st.info(f"📈 **{token[:8]}...**: +{profit_pct:.1f}% ({sol_spent} SOL)")
+                    st.info(f" **{token[:8]}...**: +{profit_pct:.1f}% ({sol_spent} SOL)")
                 elif profit_pct <= STOP_LOSS_PERCENTAGE:
-                    st.error(f"🛑 **{token[:8]}...**: {profit_pct:.1f}% (STOP-LOSS TRIGGERED!)")
+                    st.error(f" **{token[:8]}...**: {profit_pct:.1f}% (STOP-LOSS TRIGGERED!)")
                 else:
-                    st.warning(f"📉 **{token[:8]}...**: {profit_pct:.1f}% ({sol_spent} SOL)")
+                    st.warning(f"**{token[:8]}...**: {profit_pct:.1f}% ({sol_spent} SOL)")
             else:
                 st.write(f"**{token[:8]}...**: Price data unavailable")
     else:
@@ -341,13 +341,13 @@ if st.session_state.get('trading_active', False):
         for tx in transactions:
             sig = tx.get('signature', '')
             if sig and sig not in st.session_state.executed_trades:
-                st.write(f"🔍 Processing new transaction: {sig[:8]}...")
+                st.write(f"Processing new transaction: {sig[:8]}...")
                 
                 if copy_trade(sig):
                     st.session_state.executed_trades.add(sig)
-                    st.success(f"✅ Successfully copied trade: {sig[:8]}...")
+                    st.success(f"Successfully copied trade: {sig[:8]}...")
                 else:
-                    st.warning(f"⚠️ Could not copy trade: {sig[:8]}...")
+                    st.warning(f"Could not copy trade: {sig[:8]}...")
         
         # Check for profit-taking opportunities
         check_and_sell_on_profit()
