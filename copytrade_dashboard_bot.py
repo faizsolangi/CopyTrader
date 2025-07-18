@@ -1,96 +1,62 @@
-# copytrade_dashboard_bot.py
-
 import os
-import time
 import json
 import streamlit as st
-import threading
-from bip_utils import Bip39SeedGenerator, Bip39MnemonicValidator, Bip39WordsNum
-from bip_utils import Bip44, Bip44Coins
-from solana.rpc.api import Client
+import asyncio
+import nest_asyncio
 from solana.publickey import PublicKey
-from solana.transaction import Transaction
-from solana.keypair import Keypair
 from solana.rpc.async_api import AsyncClient
-from spl.token.instructions import get_associated_token_address
+from solana.keypair import Keypair
+from bip_utils import Bip39SeedGenerator, Bip39MnemonicValidator, Bip44, Bip44Coins
 
-# =============== CONFIG ================
-TARGET_WALLET = os.getenv("TARGET_WALLET", "EXAMPLE_TARGET_WALLET")
-MNEMONIC = os.getenv("MY_MNEMONIC")  # 24-word string
-SOLANA_RPC_URL = os.getenv("RPC") or "https://api.mainnet-beta.solana.com"
-BUY_AMOUNT_SOL = 0.03
-profit_threshold = 2.0  # 100% gain
+# Patch asyncio for Streamlit
+nest_asyncio.apply()
 
-# =============== INIT ================
-st.set_page_config(page_title="CopyTrade Bot Dashboard", layout="wide")
-st.title("📈 Memecoin CopyTrading Bot")
+# ========== Wallet Setup ==========
+MNEMONIC = os.getenv("MY_MNEMONIC") or "your 24-word mnemonic goes here"
 
-status_placeholder = st.empty()
-trades_table = st.empty()
-
-client = Client(SOLANA_RPC_URL)
-
-
-
-# ✅ Validate the mnemonic
 if not Bip39MnemonicValidator(MNEMONIC).IsValid():
-    raise ValueError("❌ Invalid mnemonic phrase.")
+    st.error("Invalid mnemonic phrase")
+    st.stop()
 
-# ✅ Generate seed from mnemonic
-seed_bytes = Bip39SeedGenerator(MNEMONIC).Generate()
+seed = Bip39SeedGenerator(MNEMONIC).Generate()
+bip44 = Bip44.FromSeed(seed, Bip44Coins.SOLANA)
+priv_key = bip44.Purpose().Coin().Account(0).Change(0).AddressIndex(0).PrivateKey().Raw().ToBytes()
+wallet = Keypair.from_secret_key(priv_key)
+WALLET_ADDRESS = str(wallet.public_key)
 
-# ✅ Derive Solana keypair (m/44'/501'/0'/0')
-bip44_mst = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
-bip44_acc = bip44_mst.Purpose().Coin().Account(0).Change(0).AddressIndex(0)
+# ========== Streamlit UI ==========
+st.set_page_config(page_title="Solana Copy Trade Bot", layout="centered")
+st.title("📈 Solana Memecoin Copy Trading Bot")
+st.markdown("Track and auto-copy SPL token swaps from top wallets using Jupiter API.")
 
-# ✅ Extract keypair
-private_key_bytes = bip44_acc.PrivateKey().Raw().ToBytes()
-wallet = Keypair.from_secret_key(private_key_bytes)
+st.info(f"Your Wallet: `{WALLET_ADDRESS}`")
 
+# ========== Async Functions ==========
+async def fetch_recent_transaction():
+    client = AsyncClient("https://api.mainnet-beta.solana.com")
+    confirmed_txns = await client.get_signatures_for_address(PublicKey(WALLET_ADDRESS), limit=1)
+    await client.close()
+    return confirmed_txns
 
-# Store state
-copied_trades = []
+async def copy_trade_logic():
+    st.session_state.status = "Watching wallet and waiting for new trades..."
 
-def get_recent_jup_trades(wallet_addr):
-    # Placeholder: Replace with real memecoin trade fetch using Jupiter or Solscan API
-    return [
-        {"mint": "EXAMPLE_TOKEN_MINT", "amount": BUY_AMOUNT_SOL, "type": "buy", "price": 0.002, "timestamp": time.time()}
-    ]
-
-def buy_token(token_mint):
-    # Placeholder logic
-    copied_trades.append({"mint": token_mint, "bought_at": time.time(), "status": "Bought", "amount": BUY_AMOUNT_SOL})
-    print(f"✅ Bought {token_mint} for {BUY_AMOUNT_SOL} SOL")
-
-def check_sell_conditions():
-    # Placeholder: Evaluate price condition
-    for trade in copied_trades:
-        if trade.get("status") == "Bought":
-            # Mock doubling condition
-            trade["status"] = "50% Sold"
-            print(f"💰 Sold 50% of {trade['mint']} for 100% profit!")
-
-def copy_trading_loop():
+    # Simulate single swap loop
     while True:
-        status_placeholder.info("Scanning target wallet for trades...")
+        tx = await fetch_recent_transaction()
+        if tx["result"]:
+            sig = tx["result"][0]["signature"]
+            st.success(f"🔁 Copying trade from transaction: `{sig}`")
+            # Replace below with actual Jupiter swap replication logic
+            break
+        await asyncio.sleep(10)
 
-        try:
-            trades = get_recent_jup_trades(TARGET_WALLET)
-            for trade in trades:
-                if trade["type"] == "buy":
-                    already_copied = any(t["mint"] == trade["mint"] for t in copied_trades)
-                    if not already_copied:
-                        buy_token(trade["mint"])
+# ========== Run Bot ==========
+if "status" not in st.session_state:
+    st.session_state.status = "Idle"
 
-            check_sell_conditions()
+st.write("### 🟢 Bot Status:")
+st.code(st.session_state.status)
 
-            # Update dashboard
-            trades_table.table(copied_trades)
-
-        except Exception as e:
-            status_placeholder.error(f"Error: {e}")
-
-        time.sleep(30)  # Delay to limit API rate
-
-# Run bot thread
-threading.Thread(target=copy_trading_loop, daemon=True).start()
+if st.button("🚀 Start Copy Trading"):
+    asyncio.run(copy_trade_logic())

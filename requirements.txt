@@ -1,4 +1,5 @@
 streamlit==1.35.0
-solana==0.25.0
-requests==2.31.0
-bip-utils
+solana==0.30.1
+bip-utils==2.6.0
+nest_asyncio==1.6.0
+requests
