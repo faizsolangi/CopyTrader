@@ -270,7 +270,7 @@ def check_and_execute_stop_loss():
 
 # Streamlit UI
 st.title("Solana Copy Trading Bot - LIVE TRADING")
-st.warning(WARNING: This bot will execute real trades with real money!")
+st.warning("WARNING: This bot will execute real trades with real money!")
 
 # Display configuration
 st.info(f"**Buy Amount:** {BUY_AMOUNT_SOL} SOL per trade")
