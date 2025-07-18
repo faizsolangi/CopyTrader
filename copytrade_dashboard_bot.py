@@ -51,7 +51,7 @@ else:
 client = Client(RPC_URL)
 
 # === Streamlit UI ===
-st.title("📈 Solana Copy Trading Bot Dashboard")
+st.title("Solana Copy Trading Bot Dashboard")
 st.write("**Wallet Public Key:**", str(wallet_pubkey))
 st.write("**Target Wallet:**", TARGET_WALLET)
 
@@ -94,7 +94,7 @@ def execute_trade(tx_signature: str) -> bool:
         # TODO: Implement actual swap logic using Jupiter API or similar
         # For now, this is a placeholder
         
-        st.success(f"✅ Executed mirrored trade for {tx_signature[:8]}...")
+        st.success(f"Executed mirrored trade for {tx_signature[:8]}...")
         return True
     except Exception as e:
         st.error(f"Error executing trade {tx_signature}: {e}")
@@ -111,18 +111,18 @@ def sell_on_gain():
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📊 Bot Status")
+    st.subheader("Bot Status")
     status_placeholder = st.empty()
     
 with col2:
-    st.subheader(⚙️ Controls")
-    if st.button("🔄 Refresh Now"):
+    st.subheader("Controls")
+    if st.button("Refresh Now"):
         st.rerun()
     
     auto_refresh = st.checkbox("Auto Refresh (5s)", value=False)
 
 # === Transaction Monitoring ===
-st.subheader("🔍 Recent Target Wallet Transactions")
+st.subheader("Recent Target Wallet Transactions")
 
 # Fetch transactions
 with st.spinner("Fetching transactions..."):
@@ -145,7 +145,7 @@ if transactions:
     st.json(transactions)
     
     # Display execution status
-    st.subheader("📈 Execution Status")
+    st.subheader("Execution Status")
     st.write(f"Total executed trades: {len(st.session_state.executed_trades)}")
     
     if st.session_state.executed_trades:
@@ -161,9 +161,9 @@ with status_placeholder:
     last_update_str = time.strftime("%H:%M:%S", time.localtime(st.session_state.last_update))
     
     if current_time - st.session_state.last_update < 30:
-        st.success(f"🟢 Active - Last update: {last_update_str}")
+        st.success(f"Active - Last update: {last_update_str}")
     else:
-        st.warning(f"🟡 Idle - Last update: {last_update_str}")
+        st.warning(f"Idle - Last update: {last_update_str}")
 
 # === Auto-refresh Logic ===
 if auto_refresh:
@@ -172,5 +172,5 @@ if auto_refresh:
 
 # === Footer ===
 st.markdown("---")
-st.markdown("⚠️ **Disclaimer:** This is a demo implementation. Use at your own risk.")
-st.markdown("🔧 **TODO:** Implement actual swap logic, price tracking, and error handling.")
+st.markdown("**Disclaimer:** This is a demo implementation. Use at your own risk.")
+st.markdown("**TODO:** Implement actual swap logic, price tracking, and error handling.")
