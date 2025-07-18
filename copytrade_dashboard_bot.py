@@ -27,7 +27,15 @@ status_placeholder = st.empty()
 trades_table = st.empty()
 
 client = Client(SOLANA_RPC_URL)
-wallet = Keypair.from_secret_key(bytes(json.loads(MY_PRIVATE_KEY)))
+print("PRIVATE KEY RAW:", MY_PRIVATE_KEY)
+
+try:
+    key_str = MY_PRIVATE_KEY.strip("[] \n").replace(",", " ")
+    key_bytes = bytes([int(k) for k in key_str.split()])
+    wallet = Keypair.from_secret_key(key_bytes)
+except Exception as e:
+    print("❌ Failed to parse private key:", e)
+    raise e
 
 # Store state
 copied_trades = []
