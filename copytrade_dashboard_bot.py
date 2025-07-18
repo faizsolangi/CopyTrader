@@ -5,7 +5,6 @@ import time
 import streamlit as st
 import threading
 from solana.rpc.api import Client
-from solders.pubkey import Pubkey
 from solana.publickey import PublicKey
 from solana.transaction import Transaction
 from solana.keypair import Keypair
