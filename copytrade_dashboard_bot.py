@@ -317,12 +317,12 @@ st.warning( "**LIVE TRADING MODE** - This bot executes real trades with real mon
 
 # Display configuration in sidebar
 with st.sidebar:
-    st.header(⚙️ Configuration")
+    st.header(" Configuration")
     st.info(f"**Buy Amount:** {BUY_AMOUNT_SOL} SOL")
     st.success(f"**Profit Target:** +{PROFIT_TARGET}%")
     st.error(f"**Stop-Loss:** {STOP_LOSS_PERCENTAGE}%")
     
-    st.header("📡 Connection")
+    st.header(" Connection")
     st.code(f"Wallet: {str(wallet.pubkey())[:8]}...", language=None)
     if TARGET_WALLET:
         st.code(f"Target: {TARGET_WALLET[:8]}...", language=None)
@@ -390,11 +390,11 @@ if st.session_state.positions:
                     st.write(f"**Current Price:** ${current_price:.8f}")
                     
                     if profit_pct >= PROFIT_TARGET:
-                        st.success(f"**P&L:** +{profit_pct:.1f}% 🎯")
+                        st.success(f"**P&L:** +{profit_pct:.1f}% ")
                     elif profit_pct > 0:
                         st.info(f"**P&L:** +{profit_pct:.1f}%")
                     elif profit_pct <= STOP_LOSS_PERCENTAGE:
-                        st.error(f"**P&L:** {profit_pct:.1f}% 🚨")
+                        st.error(f"**P&L:** {profit_pct:.1f}% ")
                     else:
                         st.warning(f"**P&L:** {profit_pct:.1f}%")
                 else:
