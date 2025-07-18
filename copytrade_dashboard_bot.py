@@ -227,7 +227,7 @@ def check_and_sell_on_profit():
                 profit_percentage = ((current_price - position['entry_price']) / position['entry_price']) * 100
                 
                 if profit_percentage >= PROFIT_TARGET:  # Profit target reached
-                    st.success(f"🎯 Profit target reached for {token_address[:8]}...! (+{profit_percentage:.1f}%)")
+                    st.success(f" Profit target reached for {token_address[:8]}...! (+{profit_percentage:.1f}%)")
                     
                     # Calculate 50% of position to sell
                     sell_amount = position['amount'] // 2
@@ -250,9 +250,9 @@ def check_and_sell_on_profit():
                                 'amount': position['amount'] - sell_amount
                             }
                             
-                            st.success(f"✅ Sold 50% of {token_address[:8]}... for {sol_received:.4f} SOL!")
+                            st.success(f"Sold 50% of {token_address[:8]}... for {sol_received:.4f} SOL!")
                         else:
-                            st.error(f"❌ Failed to execute profit-taking sell for {token_address[:8]}...")
+                            st.error(f"Failed to execute profit-taking sell for {token_address[:8]}...")
         except Exception as e:
             st.error(f"Error checking profit for {token_address[:8]}...: {e}")
     
@@ -279,7 +279,7 @@ def check_and_execute_stop_loss():
                 profit_percentage = ((current_price - position['entry_price']) / position['entry_price']) * 100
                 
                 if profit_percentage <= STOP_LOSS_PERCENTAGE:  # Stop-loss triggered
-                    st.error(f"🚨 STOP-LOSS TRIGGERED for {token_address[:8]}...! ({profit_percentage:.1f}%)")
+                    st.error(f"STOP-LOSS TRIGGERED for {token_address[:8]}...! ({profit_percentage:.1f}%)")
                     
                     # Sell entire position
                     sell_amount = position['amount']
@@ -297,10 +297,10 @@ def check_and_execute_stop_loss():
                         sol_spent = position.get('sol_spent', BUY_AMOUNT_SOL)
                         loss_amount = sol_spent - sol_received
                         
-                        st.error(f"💸 STOP-LOSS EXECUTED: Received {sol_received:.4f} SOL (Loss: {loss_amount:.4f} SOL)")
+                        st.error(f"STOP-LOSS EXECUTED: Received {sol_received:.4f} SOL (Loss: {loss_amount:.4f} SOL)")
                         positions_to_remove.append(token_address)
                     else:
-                        st.error(f"❌ Failed to execute stop-loss for {token_address[:8]}...")
+                        st.error(f"Failed to execute stop-loss for {token_address[:8]}...")
         except Exception as e:
             st.error(f"Error checking stop-loss for {token_address[:8]}...: {e}")
     
@@ -313,7 +313,7 @@ def check_and_execute_stop_loss():
 st.set_page_config(page_title="Solana Copy Trading Bot", page_icon="🤖", layout="wide")
 
 st.title("🤖 Solana Copy Trading Bot")
-st.warning(⚠️ **LIVE TRADING MODE** - This bot executes real trades with real money!")
+st.warning( "**LIVE TRADING MODE** - This bot executes real trades with real money!")
 
 # Display configuration in sidebar
 with st.sidebar:
@@ -327,13 +327,13 @@ with st.sidebar:
     if TARGET_WALLET:
         st.code(f"Target: {TARGET_WALLET[:8]}...", language=None)
     else:
-        st.error("❌ TARGET_WALLET not set!")
+        st.error(" TARGET_WALLET not set!")
 
 # Main dashboard
 col1, col2, col3 = st.columns([2, 2, 1])
 
 with col1:
-    st.subheader("💰 Account Balance")
+    st.subheader(" Account Balance")
     try:
         balance_result = client.get_balance(wallet.pubkey())
         if balance_result.value is not None:
@@ -341,15 +341,15 @@ with col1:
             st.metric("SOL Balance", f"{sol_balance:.4f} SOL")
             
             if sol_balance < BUY_AMOUNT_SOL:
-                st.error(f"⚠️ Insufficient balance! Need at least {BUY_AMOUNT_SOL} SOL")
+                st.error(f"Insufficient balance! Need at least {BUY_AMOUNT_SOL} SOL")
         else:
-            st.error("❌ Could not fetch balance")
+            st.error(" Could not fetch balance")
     except Exception as e:
         st.error(f"Error checking balance: {e}")
 
 with col2:
-    st.subheader("📊 Trading Status")
-    status = "🟢 ACTIVE" if st.session_state.trading_active else "🔴 STOPPED"
+    st.subheader("Trading Status")
+    status = "ACTIVE" if st.session_state.trading_active else "STOPPED"
     st.metric("Bot Status", status)
     
     if st.session_state.positions:
@@ -358,25 +358,25 @@ with col2:
         st.metric("Open Positions", "0")
 
 with col3:
-    st.subheader("🎮 Controls")
-    if st.button("▶️ START", type="primary", use_container_width=True):
+    st.subheader("Controls")
+    if st.button("START", type="primary", use_container_width=True):
         if not TARGET_WALLET:
-            st.error("❌ Please set TARGET_WALLET in environment variables!")
+            st.error("Please set TARGET_WALLET in environment variables!")
         else:
             st.session_state.trading_active = True
-            st.success("✅ Bot started!")
+            st.success("Bot started!")
             st.rerun()
     
-    if st.button("⏹️ STOP", type="secondary", use_container_width=True):
+    if st.button("STOP", type="secondary", use_container_width=True):
         st.session_state.trading_active = False
-        st.error("🛑 Bot stopped!")
+        st.error("Bot stopped!")
         st.rerun()
 
 # Positions display
-st.subheader("📋 Current Positions")
+st.subheader("Current Positions")
 if st.session_state.positions:
     for token_address, position in st.session_state.positions.items():
-        with st.expander(f"📈 {token_address[:8]}... - {position.get('sol_spent', BUY_AMOUNT_SOL)} SOL invested"):
+        with st.expander(f" {token_address[:8]}... - {position.get('sol_spent', BUY_AMOUNT_SOL)} SOL invested"):
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -408,15 +408,15 @@ if st.session_state.positions:
                 minutes = int((duration % 3600) // 60)
                 st.write(f"**Duration:** {hours}h {minutes}m")
                 
-                if st.button(f"🗑️ Close Position", key=f"close_{token_address}"):
+                if st.button(f" Close Position", key=f"close_{token_address}"):
                     # Manual close position logic would go here
                     st.info("Manual close feature would be implemented here")
 else:
-    st.info("📭 No open positions")
+    st.info(" No open positions")
 
 # Trading loop
 if st.session_state.trading_active and TARGET_WALLET:
-    st.subheader("🔄 Live Trading Feed")
+    st.subheader("Live Trading Feed")
     
     with st.container():
         try:
@@ -435,28 +435,28 @@ if st.session_state.trading_active and TARGET_WALLET:
                     if hasattr(tx, 'signature'):
                         sig = tx.signature
                         if sig and sig not in st.session_state.executed_trades:
-                            st.info(f"🔍 New transaction detected: {sig[:8]}...")
+                            st.info(f" New transaction detected: {sig[:8]}...")
                             
                             if copy_trade_by_signature(sig):
                                 st.session_state.executed_trades.add(sig)
                                 new_trades += 1
-                                st.success(f"✅ Trade copied successfully!")
+                                st.success(f"Trade copied successfully!")
                             else:
-                                st.warning(f"⚠️ Could not copy trade (demo mode)")
+                                st.warning(f"Could not copy trade (demo mode)")
                 
                 if new_trades == 0:
-                    st.success("✅ No new trades to copy")
+                    st.success(" No new trades to copy")
             else:
-                st.warning("⚠️ No transactions found for target wallet")
+                st.warning("No transactions found for target wallet")
             
             # Check positions for profit taking and stop losses
             if st.session_state.positions:
-                st.info("🔍 Checking positions for profit/loss triggers...")
+                st.info("Checking positions for profit/loss triggers...")
                 check_and_sell_on_profit()
                 check_and_execute_stop_loss()
             
         except Exception as e:
-            st.error(f"❌ Error in trading loop: {e}")
+            st.error(f"Error in trading loop: {e}")
     
     # Auto-refresh every 10 seconds when active
     if st.session_state.trading_active:
@@ -465,12 +465,12 @@ if st.session_state.trading_active and TARGET_WALLET:
 
 else:
     if not TARGET_WALLET:
-        st.error("❌ TARGET_WALLET environment variable not set!")
+        st.error("TARGET_WALLET environment variable not set!")
     else:
-        st.info("🛑 Bot is stopped. Click 'START' to begin trading.")
+        st.info("Bot is stopped. Click 'START' to begin trading.")
 
 # Summary statistics
-st.subheader("📊 Summary")
+st.subheader("Summary")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -508,4 +508,4 @@ with col4:
 
 # Footer
 st.markdown("---")
-st.caption("⚠️ **Disclaimer:** This is experimental software. Use at your own risk. Always test with small amounts first.")
+st.caption(" **Disclaimer:** This is experimental software. Use at your own risk. Always test with small amounts first.")
