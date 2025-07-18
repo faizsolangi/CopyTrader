@@ -2,6 +2,7 @@
 
 import os
 import time
+import json
 import streamlit as st
 import threading
 from solana.rpc.api import Client
@@ -26,7 +27,7 @@ status_placeholder = st.empty()
 trades_table = st.empty()
 
 client = Client(SOLANA_RPC_URL)
-wallet = Keypair.from_secret_key(bytes(eval(MY_PRIVATE_KEY)))
+wallet = Keypair.from_secret_key(bytes(json.loads(MY_PRIVATE_KEY)))
 
 # Store state
 copied_trades = []
