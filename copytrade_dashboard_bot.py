@@ -41,9 +41,24 @@ if 'executed_trades' not in st.session_state:
 # Wallet setup
 def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
     seed_bytes = Bip39SeedGenerator(mnemonic).Generate()
-    # Use first 32 bytes as private key (common Solana approach)
     private_key = seed_bytes[:32]
-    return Keypair.from_secret_key(private_key)
+    
+    # Debug information
+    print(f"Seed bytes type: {type(seed_bytes)}")
+    print(f"Seed bytes length: {len(seed_bytes)}")
+    print(f"Private key type: {type(private_key)}")
+    print(f"Private key length: {len(private_key)}")
+    
+    try:
+        return Keypair.from_secret_key(private_key)
+    except Exception as e:
+        print(f"Error: {e}")
+        # Try converting to bytes if it's not already
+        if hasattr(private_key, 'ToBytes'):
+            private_key_bytes = private_key.ToBytes()
+            print(f"Converted to bytes: {type(private_key_bytes)}, length: {len(private_key_bytes)}")
+            return Keypair.from_secret_key(private_key_bytes)
+        raise
 
 wallet = get_keypair_from_mnemonic(MNEMONIC)
 client = Client(RPC_URL)
