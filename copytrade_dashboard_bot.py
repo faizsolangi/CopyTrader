@@ -5,14 +5,14 @@ import time
 import streamlit as st
 import threading
 from solana.rpc.api import Client
-from solana.publickey import PublicKey
+from solders.pubkey import Pubkey
 from solana.transaction import Transaction
 from solana.keypair import Keypair
 from solana.rpc.async_api import AsyncClient
 from spl.token.instructions import get_associated_token_address
 
 # =============== CONFIG ================
-TARGET_WALLET = os.getenv("DNfuF1L62WWyW3pNakVkyGGFzVVhj4Yr52jSmdTyeBHm") or "EXAMPLE_TARGET_WALLET"
+TARGET_WALLET = os.getenv("TARGET_WALLET", "EXAMPLE_TARGET_WALLET")
 MY_PRIVATE_KEY = os.getenv("MY_PRIVATE_KEY") or "[12,34,...]"
 SOLANA_RPC_URL = os.getenv("RPC") or "https://api.mainnet-beta.solana.com"
 BUY_AMOUNT_SOL = 0.03
