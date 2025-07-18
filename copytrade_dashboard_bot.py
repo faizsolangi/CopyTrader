@@ -42,7 +42,11 @@ if 'executed_trades' not in st.session_state:
 def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
     seed_bytes = Bip39SeedGenerator(mnemonic).Generate()
     bip44 = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
-    priv_key = bip44.PrivateKey().Raw().ToBytes()
+    
+    # Derive to account 0, change 0, address 0 (standard path: m/44'/501'/0'/0')
+    account = bip44.Purpose().Coin().Account(0).Change(0).AddressIndex(0)
+    priv_key = account.PrivateKey().Raw().ToBytes()
+    
     return Keypair.from_secret_key(priv_key)
 
 wallet = get_keypair_from_mnemonic(MNEMONIC)
