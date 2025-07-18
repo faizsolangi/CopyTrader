@@ -5,6 +5,8 @@ import time
 import json
 import streamlit as st
 import threading
+from bip_utils import Bip39SeedGenerator, Bip39MnemonicValidator, Bip39WordsNum
+from bip_utils import Bip44, Bip44Coins
 from solana.rpc.api import Client
 from solana.publickey import PublicKey
 from solana.transaction import Transaction
@@ -14,7 +16,7 @@ from spl.token.instructions import get_associated_token_address
 
 # =============== CONFIG ================
 TARGET_WALLET = os.getenv("TARGET_WALLET", "EXAMPLE_TARGET_WALLET")
-MY_PRIVATE_KEY = os.getenv("MY_PRIVATE_KEY") or "[12,34,...]"
+MNEMONIC = os.getenv("MY_MNEMONIC")  # 24-word string
 SOLANA_RPC_URL = os.getenv("RPC") or "https://api.mainnet-beta.solana.com"
 BUY_AMOUNT_SOL = 0.03
 profit_threshold = 2.0  # 100% gain
@@ -27,15 +29,24 @@ status_placeholder = st.empty()
 trades_table = st.empty()
 
 client = Client(SOLANA_RPC_URL)
-print("PRIVATE KEY RAW:", MY_PRIVATE_KEY)
 
-try:
-    key_str = MY_PRIVATE_KEY.strip("[] \n").replace(",", " ")
-    key_bytes = bytes([int(k) for k in key_str.split()])
-    wallet = Keypair.from_secret_key(key_bytes)
-except Exception as e:
-    print("❌ Failed to parse private key:", e)
-    raise e
+
+
+# ✅ Validate the mnemonic
+if not Bip39MnemonicValidator(MNEMONIC).IsValid():
+    raise ValueError("❌ Invalid mnemonic phrase.")
+
+# ✅ Generate seed from mnemonic
+seed_bytes = Bip39SeedGenerator(MNEMONIC).Generate()
+
+# ✅ Derive Solana keypair (m/44'/501'/0'/0')
+bip44_mst = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
+bip44_acc = bip44_mst.Purpose().Coin().Account(0).Change(0).AddressIndex(0)
+
+# ✅ Extract keypair
+private_key_bytes = bip44_acc.PrivateKey().Raw().ToBytes()
+wallet = Keypair.from_secret_key(private_key_bytes)
+
 
 # Store state
 copied_trades = []
