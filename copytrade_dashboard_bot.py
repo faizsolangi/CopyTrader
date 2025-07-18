@@ -6,8 +6,8 @@ import requests
 from solana.rpc.api import Client
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey as PublicKey
-from solana.transaction import Transaction
-from solana.rpc.types import TxOpts
+from solders.transaction import Transaction
+from solders.rpc.types import TxOpts
 from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins
 from dotenv import load_dotenv
 from typing import Dict, List, Optional
