@@ -5,7 +5,7 @@ import streamlit as st
 import requests
 from solana.rpc.api import Client
 from solders.keypair import Keypair
-from solana.publickey import PublicKey
+from solders.pubkey import Pubkey as PublicKey
 from solana.transaction import Transaction
 from solana.rpc.types import TxOpts
 from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins
