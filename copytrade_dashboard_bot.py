@@ -4,7 +4,7 @@ import json
 import streamlit as st
 import requests
 from solana.rpc.api import Client
-from solana.keypair import Keypair
+from solders.keypair import Keypair
 from solana.publickey import PublicKey
 from solana.transaction import Transaction
 from solana.rpc.types import TxOpts
