@@ -8,16 +8,18 @@ from solders.keypair import Keypair
 from solders.pubkey import Pubkey as PublicKey
 from solders.transaction import Transaction
 from solana.rpc.types import TxOpts
-from bip_utils import Bip39SeedGenerator
+from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins, Bip44Changes
 from dotenv import load_dotenv
 from typing import Dict, List, Optional
 import base64
+import base58
 
 # Load environment variables
 load_dotenv()
 
 # Configuration
 MNEMONIC = os.getenv("PRIVATE_KEY")  # Your mnemonic phrase
+PRIVATE_KEY_BASE58 = os.getenv("PRIVATE_KEY_BASE58")  # Alternative: base58 private key
 TARGET_WALLET = os.getenv("TARGET_WALLET")
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 JUPITER_API_URL = "https://quote-api.jup.ag/v6"
@@ -41,9 +43,19 @@ if 'executed_trades' not in st.session_state:
 if 'trading_active' not in st.session_state:
     st.session_state.trading_active = False
 
-# Wallet setup - FIXED
-def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
-    """Generate Solana keypair from mnemonic using standard approach"""
+# Wallet setup - FIXED WITH MULTIPLE METHODS
+def get_keypair_from_base58(private_key_base58: str) -> Keypair:
+    """Generate Solana keypair from base58 private key (most reliable method)"""
+    try:
+        # Decode base58 private key
+        private_key_bytes = base58.b58decode(private_key_base58)
+        return Keypair.from_bytes(private_key_bytes)
+    except Exception as e:
+        st.error(f"Error creating wallet from base58 key: {e}")
+        raise
+
+def get_keypair_from_mnemonic_bip44(mnemonic: str, account_index: int = 0) -> Keypair:
+    """Generate Solana keypair from mnemonic using proper BIP44 derivation (Solana standard)"""
     try:
         # Remove any quotes from mnemonic
         clean_mnemonic = mnemonic.strip().strip('"\'')
@@ -51,22 +63,101 @@ def get_keypair_from_mnemonic(mnemonic: str) -> Keypair:
         # Generate seed from mnemonic
         seed_bytes = Bip39SeedGenerator(clean_mnemonic).Generate()
         
-        # Use first 32 bytes as private key (standard Solana approach)
+        # Use BIP44 derivation for Solana (coin type 501)
+        # Path: m/44'/501'/0'/0'
+        bip44_mst_ctx = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
+        bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(account_index)
+        bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+        bip44_addr_ctx = bip44_chg_ctx.AddressIndex(0)
+        
+        # Get private key (32 bytes)
+        private_key_bytes = bip44_addr_ctx.PrivateKey().Raw().ToBytes()[:32]
+        
+        return Keypair.from_bytes(private_key_bytes)
+    except Exception as e:
+        st.error(f"Error creating wallet from mnemonic (BIP44): {e}")
+        raise
+
+def get_keypair_from_mnemonic_simple(mnemonic: str) -> Keypair:
+    """Generate Solana keypair from mnemonic using simple seed approach"""
+    try:
+        # Remove any quotes from mnemonic
+        clean_mnemonic = mnemonic.strip().strip('"\'')
+        
+        # Generate seed from mnemonic
+        seed_bytes = Bip39SeedGenerator(clean_mnemonic).Generate()
+        
+        # Use first 32 bytes as private key
         private_key = seed_bytes[:32]
         
-        # Convert to bytes array format that Keypair expects
-        private_key_array = list(private_key)
-        
-        return Keypair.from_seed(bytes(private_key_array))
+        return Keypair.from_seed(bytes(private_key))
     except Exception as e:
-        st.error(f"Error creating wallet from mnemonic: {e}")
+        st.error(f"Error creating wallet from mnemonic (simple): {e}")
+        raise
+
+def initialize_wallet():
+    """Initialize wallet using multiple methods"""
+    wallet = None
+    method_used = ""
+    
+    # Method 1: Try base58 private key first (most reliable)
+    if PRIVATE_KEY_BASE58:
+        try:
+            wallet = get_keypair_from_base58(PRIVATE_KEY_BASE58)
+            method_used = "Base58 Private Key"
+            st.info(f"Wallet loaded using {method_used}")
+        except Exception as e:
+            st.warning(f"Failed to load wallet from base58 key: {e}")
+    
+    # Method 2: Try BIP44 derivation (Phantom/Solflare standard)
+    if not wallet and MNEMONIC:
+        try:
+            wallet = get_keypair_from_mnemonic_bip44(MNEMONIC)
+            method_used = "Mnemonic (BIP44 - Account 0)"
+            st.info(f"Wallet loaded using {method_used}")
+        except Exception as e:
+            st.warning(f"Failed to load wallet from mnemonic (BIP44): {e}")
+            
+            # Method 3: Try simple seed approach
+            try:
+                wallet = get_keypair_from_mnemonic_simple(MNEMONIC)
+                method_used = "Mnemonic (Simple Seed)"
+                st.info(f"Wallet loaded using {method_used}")
+            except Exception as e:
+                st.error(f"Failed to load wallet from mnemonic (simple): {e}")
+    
+    if not wallet:
+        st.error("Could not initialize wallet with any method!")
+        st.error("Please check your PRIVATE_KEY (mnemonic) or PRIVATE_KEY_BASE58 environment variables")
+        st.info("**How to get your private key:**")
+        st.info("1. **Phantom Wallet**: Settings > Export Private Key (base58 format)")
+        st.info("2. **Solflare**: Settings > Export Wallet > Private Key")
+        st.info("3. **Command line**: solana-keygen grind or use existing keypair file")
         st.stop()
+    
+    return wallet, method_used
 
 # Initialize wallet and client
 try:
-    wallet = get_keypair_from_mnemonic(MNEMONIC)
+    wallet, wallet_method = initialize_wallet()
     client = Client(RPC_URL)
-    st.success("Wallet initialized successfully!")
+    st.success(f"Wallet initialized successfully using {wallet_method}!")
+    
+    # Display wallet info
+    wallet_address = str(wallet.pubkey())
+    st.info(f"**Wallet Address**: {wallet_address}")
+    
+    # Verify wallet by checking balance
+    try:
+        balance_result = client.get_balance(wallet.pubkey())
+        if balance_result.value is not None:
+            sol_balance = balance_result.value / 1_000_000_000
+            st.success(f"**Wallet Balance**: {sol_balance:.6f} SOL")
+        else:
+            st.warning("Could not verify wallet balance - RPC might be slow")
+    except Exception as e:
+        st.warning(f"Could not verify wallet balance: {e}")
+        
 except Exception as e:
     st.error(f"Failed to initialize wallet: {e}")
     st.stop()
@@ -227,7 +318,7 @@ def check_and_sell_on_profit():
                 profit_percentage = ((current_price - position['entry_price']) / position['entry_price']) * 100
                 
                 if profit_percentage >= PROFIT_TARGET:  # Profit target reached
-                    st.success(f" Profit target reached for {token_address[:8]}...! (+{profit_percentage:.1f}%)")
+                    st.success(f"Profit target reached for {token_address[:8]}...! (+{profit_percentage:.1f}%)")
                     
                     # Calculate 50% of position to sell
                     sell_amount = position['amount'] // 2
@@ -312,28 +403,29 @@ def check_and_execute_stop_loss():
 # Streamlit UI
 st.set_page_config(page_title="Solana Copy Trading Bot", page_icon="🤖", layout="wide")
 
-st.title("🤖 Solana Copy Trading Bot")
-st.warning( "**LIVE TRADING MODE** - This bot executes real trades with real money!")
+st.title("Solana Copy Trading Bot")
+st.warning("**LIVE TRADING MODE** - This bot executes real trades with real money!")
 
 # Display configuration in sidebar
 with st.sidebar:
-    st.header(" Configuration")
+    st.header("Configuration")
     st.info(f"**Buy Amount:** {BUY_AMOUNT_SOL} SOL")
     st.success(f"**Profit Target:** +{PROFIT_TARGET}%")
     st.error(f"**Stop-Loss:** {STOP_LOSS_PERCENTAGE}%")
     
-    st.header(" Connection")
+    st.header("Connection")
     st.code(f"Wallet: {str(wallet.pubkey())[:8]}...", language=None)
+    st.caption(f"Method: {wallet_method}")
     if TARGET_WALLET:
         st.code(f"Target: {TARGET_WALLET[:8]}...", language=None)
     else:
-        st.error(" TARGET_WALLET not set!")
+        st.error("TARGET_WALLET not set!")
 
 # Main dashboard
 col1, col2, col3 = st.columns([2, 2, 1])
 
 with col1:
-    st.subheader(" Account Balance")
+    st.subheader("Account Balance")
     try:
         balance_result = client.get_balance(wallet.pubkey())
         if balance_result.value is not None:
@@ -343,7 +435,7 @@ with col1:
             if sol_balance < BUY_AMOUNT_SOL:
                 st.error(f"Insufficient balance! Need at least {BUY_AMOUNT_SOL} SOL")
         else:
-            st.error(" Could not fetch balance")
+            st.error("Could not fetch balance")
     except Exception as e:
         st.error(f"Error checking balance: {e}")
 
@@ -376,7 +468,7 @@ with col3:
 st.subheader("Current Positions")
 if st.session_state.positions:
     for token_address, position in st.session_state.positions.items():
-        with st.expander(f" {token_address[:8]}... - {position.get('sol_spent', BUY_AMOUNT_SOL)} SOL invested"):
+        with st.expander(f"{token_address[:8]}... - {position.get('sol_spent', BUY_AMOUNT_SOL)} SOL invested"):
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -390,11 +482,11 @@ if st.session_state.positions:
                     st.write(f"**Current Price:** ${current_price:.8f}")
                     
                     if profit_pct >= PROFIT_TARGET:
-                        st.success(f"**P&L:** +{profit_pct:.1f}% ")
+                        st.success(f"**P&L:** +{profit_pct:.1f}% (TARGET)")
                     elif profit_pct > 0:
                         st.info(f"**P&L:** +{profit_pct:.1f}%")
                     elif profit_pct <= STOP_LOSS_PERCENTAGE:
-                        st.error(f"**P&L:** {profit_pct:.1f}% ")
+                        st.error(f"**P&L:** {profit_pct:.1f}% (STOP-LOSS)")
                     else:
                         st.warning(f"**P&L:** {profit_pct:.1f}%")
                 else:
@@ -408,11 +500,11 @@ if st.session_state.positions:
                 minutes = int((duration % 3600) // 60)
                 st.write(f"**Duration:** {hours}h {minutes}m")
                 
-                if st.button(f" Close Position", key=f"close_{token_address}"):
+                if st.button(f"Close Position", key=f"close_{token_address}"):
                     # Manual close position logic would go here
                     st.info("Manual close feature would be implemented here")
 else:
-    st.info(" No open positions")
+    st.info("No open positions")
 
 # Trading loop
 if st.session_state.trading_active and TARGET_WALLET:
@@ -435,7 +527,7 @@ if st.session_state.trading_active and TARGET_WALLET:
                     if hasattr(tx, 'signature'):
                         sig = tx.signature
                         if sig and sig not in st.session_state.executed_trades:
-                            st.info(f" New transaction detected: {sig[:8]}...")
+                            st.info(f"New transaction detected: {sig[:8]}...")
                             
                             if copy_trade_by_signature(sig):
                                 st.session_state.executed_trades.add(sig)
@@ -445,7 +537,7 @@ if st.session_state.trading_active and TARGET_WALLET:
                                 st.warning(f"Could not copy trade (demo mode)")
                 
                 if new_trades == 0:
-                    st.success(" No new trades to copy")
+                    st.success("No new trades to copy")
             else:
                 st.warning("No transactions found for target wallet")
             
@@ -508,4 +600,29 @@ with col4:
 
 # Footer
 st.markdown("---")
-st.caption(" **Disclaimer:** This is experimental software. Use at your own risk. Always test with small amounts first.")
+st.caption("**Disclaimer:** This is experimental software. Use at your own risk. Always test with small amounts first.")
+
+# Debug section (expandable)
+with st.expander("Debug Information"):
+    st.write("**Environment Variables Status:**")
+    st.write(f"- MNEMONIC set: {'Yes' if MNEMONIC else 'No'}")
+    st.write(f"- PRIVATE_KEY_BASE58 set: {'Yes' if PRIVATE_KEY_BASE58 else 'No'}")
+    st.write(f"- TARGET_WALLET set: {'Yes' if TARGET_WALLET else 'No'}")
+    st.write(f"- RPC_URL: {RPC_URL}")
+    
+    st.write(f"**Wallet Information:**")
+    st.write(f"- Address: {str(wallet.pubkey())}")
+    st.write(f"- Method used: {wallet_method}")
+    
+    if st.button("Test Connection"):
+        try:
+            result = client.get_health()
+            st.success("RPC connection healthy!")
+            
+            balance = client.get_balance(wallet.pubkey())
+            if balance.value is not None:
+                st.success(f"Wallet accessible - Balance: {balance.value / 1e9:.6f} SOL")
+            else:
+                st.error("Could not fetch wallet balance")
+        except Exception as e:
+            st.error(f"Connection test failed: {e}")
