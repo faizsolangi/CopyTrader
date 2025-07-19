@@ -3,3 +3,4 @@ solana>=0.30.0
 solders>=0.20.0
 bip-utils>=2.7.0
 python-dotenv>=1.0.0
+base58==2.1.1

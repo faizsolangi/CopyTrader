@@ -12,7 +12,30 @@ from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins, Bip44Changes
 from dotenv import load_dotenv
 from typing import Dict, List, Optional
 import base64
-import base58
+
+# Try to import base58, fallback to manual implementation if not available
+try:
+    import base58
+    HAS_BASE58 = True
+except ImportError:
+    HAS_BASE58 = False
+    # Manual base58 implementation as fallback
+    def base58_decode(s):
+        """Simple base58 decode implementation"""
+        alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+        base_count = len(alphabet)
+        decoded = 0
+        multi = 1
+        
+        for char in reversed(s):
+            decoded += multi * alphabet.index(char)
+            multi *= base_count
+        
+        h = hex(decoded)[2:]
+        if len(h) % 2:
+            h = '0' + h
+        
+        return bytes.fromhex(h)
 
 # Load environment variables
 load_dotenv()
@@ -48,7 +71,11 @@ def get_keypair_from_base58(private_key_base58: str) -> Keypair:
     """Generate Solana keypair from base58 private key (most reliable method)"""
     try:
         # Decode base58 private key
-        private_key_bytes = base58.b58decode(private_key_base58)
+        if HAS_BASE58:
+            private_key_bytes = base58.b58decode(private_key_base58)
+        else:
+            private_key_bytes = base58_decode(private_key_base58)
+        
         return Keypair.from_bytes(private_key_bytes)
     except Exception as e:
         st.error(f"Error creating wallet from base58 key: {e}")
@@ -613,6 +640,7 @@ with st.expander("Debug Information"):
     st.write(f"**Wallet Information:**")
     st.write(f"- Address: {str(wallet.pubkey())}")
     st.write(f"- Method used: {wallet_method}")
+    st.write(f"- Base58 library available: {'Yes' if HAS_BASE58 else 'No (using fallback)'}")
     
     if st.button("Test Connection"):
         try:
