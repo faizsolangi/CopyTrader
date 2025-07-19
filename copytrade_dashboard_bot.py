@@ -686,4 +686,8 @@ with st.expander("Debug Information"):
             
             balance = client.get_balance(wallet.pubkey())
             if balance.value is not None:
-                st.
+                st.success(f"Wallet accessible - Balance: {balance.value / 1e9:.6f} SOL")
+            else:
+                st.error("Could not fetch wallet balance")
+        except Exception as e:
+            st.error(f"Connection test failed: {e}")
