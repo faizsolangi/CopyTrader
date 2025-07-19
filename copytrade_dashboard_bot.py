@@ -40,9 +40,10 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-# Configuration
+# Configuration - Updated environment variable names
 MNEMONIC = os.getenv("PRIVATE_KEY")  # Your mnemonic phrase
-PRIVATE_KEY_BASE58 = os.getenv("PRIVATE_KEY_BASE58")  # Alternative: base58 private key
+PRIVATE_KEY_BASE58 = os.getenv("PRIVATE_KEY_BASE58")  # Base58 private key
+PRIVATE_KEY_HEX = os.getenv("PRIVATE_KEY_HEX")  # NEW: Hex private key (64 characters)
 TARGET_WALLET = os.getenv("TARGET_WALLET")
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 JUPITER_API_URL = "https://quote-api.jup.ag/v6"
@@ -66,9 +67,30 @@ if 'executed_trades' not in st.session_state:
 if 'trading_active' not in st.session_state:
     st.session_state.trading_active = False
 
-# Wallet setup - FIXED WITH MULTIPLE METHODS
+# Wallet setup - FIXED WITH HEX PRIVATE KEY SUPPORT
+def get_keypair_from_hex(private_key_hex: str) -> Keypair:
+    """Generate Solana keypair from hex private key (64 characters)"""
+    try:
+        # Remove any 0x prefix if present
+        clean_hex = private_key_hex.strip().replace('0x', '').replace('0X', '')
+        
+        # Validate hex string
+        if len(clean_hex) != 64:
+            raise ValueError(f"Hex private key must be exactly 64 characters, got {len(clean_hex)}")
+        
+        # Convert hex to bytes (32 bytes)
+        private_key_bytes = bytes.fromhex(clean_hex)
+        
+        if len(private_key_bytes) != 32:
+            raise ValueError(f"Private key must be 32 bytes, got {len(private_key_bytes)}")
+        
+        return Keypair.from_bytes(private_key_bytes)
+    except Exception as e:
+        st.error(f"Error creating wallet from hex key: {e}")
+        raise
+
 def get_keypair_from_base58(private_key_base58: str) -> Keypair:
-    """Generate Solana keypair from base58 private key (most reliable method)"""
+    """Generate Solana keypair from base58 private key"""
     try:
         # Decode base58 private key
         if HAS_BASE58:
@@ -127,8 +149,17 @@ def initialize_wallet():
     wallet = None
     method_used = ""
     
-    # Method 1: Try base58 private key first (most reliable)
-    if PRIVATE_KEY_BASE58:
+    # Method 1: Try hex private key first (most common for raw keys)
+    if PRIVATE_KEY_HEX:
+        try:
+            wallet = get_keypair_from_hex(PRIVATE_KEY_HEX)
+            method_used = "Hex Private Key (64 characters)"
+            st.info(f"Wallet loaded using {method_used}")
+        except Exception as e:
+            st.warning(f"Failed to load wallet from hex key: {e}")
+    
+    # Method 2: Try base58 private key
+    if not wallet and PRIVATE_KEY_BASE58:
         try:
             wallet = get_keypair_from_base58(PRIVATE_KEY_BASE58)
             method_used = "Base58 Private Key"
@@ -136,7 +167,7 @@ def initialize_wallet():
         except Exception as e:
             st.warning(f"Failed to load wallet from base58 key: {e}")
     
-    # Method 2: Try BIP44 derivation (Phantom/Solflare standard)
+    # Method 3: Try BIP44 derivation (Phantom/Solflare standard)
     if not wallet and MNEMONIC:
         try:
             wallet = get_keypair_from_mnemonic_bip44(MNEMONIC)
@@ -145,7 +176,7 @@ def initialize_wallet():
         except Exception as e:
             st.warning(f"Failed to load wallet from mnemonic (BIP44): {e}")
             
-            # Method 3: Try simple seed approach
+            # Method 4: Try simple seed approach
             try:
                 wallet = get_keypair_from_mnemonic_simple(MNEMONIC)
                 method_used = "Mnemonic (Simple Seed)"
@@ -155,11 +186,16 @@ def initialize_wallet():
     
     if not wallet:
         st.error("Could not initialize wallet with any method!")
-        st.error("Please check your PRIVATE_KEY (mnemonic) or PRIVATE_KEY_BASE58 environment variables")
+        st.error("Please check your private key environment variables")
+        st.info("**Supported private key formats:**")
+        st.info("1. **PRIVATE_KEY_HEX**: 64-character hex string (e.g., 'abc123def...')")
+        st.info("2. **PRIVATE_KEY_BASE58**: Base58 encoded private key from Phantom/Solflare")
+        st.info("3. **PRIVATE_KEY**: 12/24 word mnemonic phrase")
+        st.info("")
         st.info("**How to get your private key:**")
-        st.info("1. **Phantom Wallet**: Settings > Export Private Key (base58 format)")
-        st.info("2. **Solflare**: Settings > Export Wallet > Private Key")
-        st.info("3. **Command line**: solana-keygen grind or use existing keypair file")
+        st.info("• **Phantom Wallet**: Settings → Show Private Key (copy as hex)")
+        st.info("• **Solflare**: Settings → Export Wallet → Private Key")
+        st.info("• **Command line**: Use `solana-keygen show` and copy the seed array as hex")
         st.stop()
     
     return wallet, method_used
@@ -632,8 +668,9 @@ st.caption("**Disclaimer:** This is experimental software. Use at your own risk.
 # Debug section (expandable)
 with st.expander("Debug Information"):
     st.write("**Environment Variables Status:**")
-    st.write(f"- MNEMONIC set: {'Yes' if MNEMONIC else 'No'}")
+    st.write(f"- PRIVATE_KEY (mnemonic) set: {'Yes' if MNEMONIC else 'No'}")
     st.write(f"- PRIVATE_KEY_BASE58 set: {'Yes' if PRIVATE_KEY_BASE58 else 'No'}")
+    st.write(f"- PRIVATE_KEY_HEX set: {'Yes' if PRIVATE_KEY_HEX else 'No'}")
     st.write(f"- TARGET_WALLET set: {'Yes' if TARGET_WALLET else 'No'}")
     st.write(f"- RPC_URL: {RPC_URL}")
     
@@ -649,8 +686,4 @@ with st.expander("Debug Information"):
             
             balance = client.get_balance(wallet.pubkey())
             if balance.value is not None:
-                st.success(f"Wallet accessible - Balance: {balance.value / 1e9:.6f} SOL")
-            else:
-                st.error("Could not fetch wallet balance")
-        except Exception as e:
-            st.error(f"Connection test failed: {e}")
+                st.
